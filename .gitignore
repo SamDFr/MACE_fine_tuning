@@ -18,6 +18,18 @@ model/*.model
 model/*.pt
 model/*.pth
 
+# Input data
+inputs/correlation/*
+!inputs/correlation/
+!inputs/correlation/README.md
+inputs/md/*
+!inputs/md/
+!inputs/md/README.md
+!inputs/md/optimize.yaml
+!inputs/md/nvt.yaml
+!inputs/md/nve.yaml
+!inputs/md/POSCAR-1
+
 # Outputs
 outputs/**
 !outputs/

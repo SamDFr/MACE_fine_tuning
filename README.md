@@ -82,6 +82,21 @@ Exemples:
 Les scripts MD lisent maintenant leurs paramètres de simulation depuis des fichiers YAML dans `inputs/md/`.
 Ils peuvent aussi traiter plusieurs structures en batch.
 
+Pour un batch de plusieurs structures `POSCAR-X`, tu peux utiliser par exemple:
+
+```yaml
+structure_glob: "POSCAR-*"
+```
+
+ou une liste explicite:
+
+```yaml
+structure_files:
+  - POSCAR-160
+  - POSCAR-161
+  - POSCAR-162
+```
+
 ## Notebooks
 
 ### Corrélations
@@ -304,6 +319,68 @@ Si tu veux lancer les notebooks:
 ```bash
 source .venv/bin/activate
 jupyter notebook
+```
+
+## Cluster
+
+Le plus simple sur cluster est:
+
+1. copier ce dépôt sur le cluster
+2. créer l'environnement Python sur le cluster
+3. modifier `inputs/md/optimize.yaml`, `inputs/md/nvt.yaml` ou `inputs/md/nve.yaml`
+4. lancer le script Python voulu depuis un job batch
+
+Exemple CPU avec plusieurs `POSCAR-X`:
+
+Dans le YAML:
+
+```yaml
+structure_glob: "POSCAR-*"
+selected_models: null
+device: cpu
+output_name: nvt_batch
+thermostat: nose-hoover
+temperature_k: 300.0
+time_step_fs: 1.0
+steps: 5000
+tdamp_fs: 100.0
+trajectory_file: trajectory.extxyz
+trajectory_format: extxyz
+final_structure_file: final_structure.extxyz
+final_structure_format: extxyz
+trajectory_interval: 10
+log_interval: 10
+```
+
+Exemple `job.slurm`:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=mace-nvt
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --time=24:00:00
+#SBATCH --partition=cpu
+#SBATCH --output=slurm-%j.out
+
+set -euo pipefail
+
+cd /path/to/MACE_fine_tuning
+source .venv/bin/activate
+python3 scripts/run_nvt.py
+```
+
+Pour GPU:
+
+- installe une version de `torch` compatible CUDA sur le cluster
+- mets `device: cuda` dans le YAML
+- soumets le job sur une partition GPU
+
+Les sorties seront rangées comme:
+
+```text
+outputs/md/<output_name>/<structure_name>/<model_name>/
 ```
 
 ## Remarque importante pour NVE
