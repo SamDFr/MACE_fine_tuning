@@ -1,0 +1,10 @@
+numpy
+pandas
+matplotlib
+ase
+pyyaml
+jupyter
+pytest
+tqdm
+torch
+mace-torch

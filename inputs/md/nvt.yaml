@@ -1,0 +1,44 @@
+# Structure file inside inputs/md/ or relative/absolute path
+structure_file: POSCAR-1
+# Or use a batch selection instead:
+# structure_files:
+#   - POSCAR-160
+#   - POSCAR-161
+# structure_glob: "POSCAR-*"
+
+# Use null to run all models found in model/
+selected_models: null
+
+device: cpu
+default_dtype: float32
+output_name: nvt
+trajectory_file: trajectory.extxyz
+trajectory_format: extxyz
+final_structure_file: final_structure.extxyz
+final_structure_format: extxyz
+log_file: run.log
+append_trajectory: true
+trajectory_interval: 10
+
+thermostat: nose-hoover
+temperature_k: 15.0
+time_step_fs: 1.0
+steps: 2000
+
+# nose-hoover options
+tdamp_fs: 100.0
+tchain: 3
+tloop: 1
+
+# langevin option
+friction: 0.02
+
+# berendsen / bussi option
+taut_fs: 100.0
+
+# velocity initialization
+initialize_velocities: true
+remove_translation: true
+remove_rotation: true
+
+log_interval: 1

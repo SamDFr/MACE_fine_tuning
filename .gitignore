@@ -1,0 +1,32 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+*.pyc
+*.pyo
+*.pyd
+site/
+.DS_Store
+.ipynb_checkpoints/
+
+# Models
+model/*.model
+model/*.pt
+model/*.pth
+
+# Outputs
+outputs/**
+!outputs/
+!outputs/README.md
+
+# Common generated files
+*.traj
+*.log
+*.png
+*.csv
+*.json
+*.lammpstrj

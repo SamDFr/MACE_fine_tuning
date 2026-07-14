@@ -1,0 +1,28 @@
+# Structure file inside inputs/md/
+structure_file: POSCAR-1
+# Or use a batch selection instead:
+# structure_files:
+#   - POSCAR-160
+#   - POSCAR-161
+# structure_glob: "POSCAR-*"
+
+# Use null to run all models found in model/
+selected_models: null
+
+device: cpu
+default_dtype: float32
+output_name: optimize
+trajectory_file: trajectory.extxyz
+trajectory_format: extxyz
+final_structure_file: final_structure.extxyz
+final_structure_format: extxyz
+log_file: run.log
+append_trajectory: true
+trajectory_interval: 10
+optimizer_log_file: optimizer.log
+optimizer_restart_file: optimizer.restart
+
+optimizer: fire
+fmax: 0.01
+steps: 300
+log_interval: 10
