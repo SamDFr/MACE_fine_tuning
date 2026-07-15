@@ -2,15 +2,19 @@ from __future__ import annotations
 
 from _md_shared import (
     attach_trajectory_and_log,
+    build_timing_summary,
     load_run_config,
     load_atoms,
     load_calculator,
+    measure_run,
     model_output_dir,
+    print_timing_summary,
     prepare_named_output_dir,
     save_final_structure,
     select_model_files,
     select_structure_files,
     setup_nve,
+    write_timing_summary,
     write_run_settings,
 )
 
@@ -35,12 +39,30 @@ def main() -> None:
 
             dyn = setup_nve(atoms, time_step_fs=time_step_fs)
             attach_trajectory_and_log(dyn, atoms, output_dir, config=config)
-            dyn.run(steps)
+            elapsed_seconds, started_at, finished_at = measure_run(lambda: dyn.run(steps))
             save_final_structure(atoms, output_dir, config=config)
-            write_run_settings(output_dir, config, model_path, structure_path)
+            completed_steps = int(getattr(dyn, "nsteps", steps))
+            timing_summary = build_timing_summary(
+                task="nve",
+                config=config,
+                requested_steps=steps,
+                completed_steps=completed_steps,
+                elapsed_seconds=elapsed_seconds,
+                started_at=started_at,
+                finished_at=finished_at,
+            )
+            write_timing_summary(output_dir, config, timing_summary)
+            write_run_settings(
+                output_dir,
+                config,
+                model_path,
+                structure_path,
+                timing_summary=timing_summary,
+            )
 
             print(f"Model used: {model_path}")
             print(f"Outputs written to: {output_dir}")
+            print_timing_summary(timing_summary)
 
 
 if __name__ == "__main__":

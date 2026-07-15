@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime, timezone
+import time
 
 import yaml
 import numpy as np
@@ -376,12 +378,84 @@ def setup_nve(atoms, time_step_fs: float):
     return VelocityVerlet(atoms, timestep=time_step_fs * units.fs)
 
 
-def write_run_settings(output_dir: Path, config: dict, model_path: Path, structure_path: Path) -> None:
+def get_timing_file(config: dict) -> str:
+    return str(config.get("timing_file", "timing_summary.yaml"))
+
+
+def measure_run(run_callable):
+    started_at = datetime.now(timezone.utc).isoformat()
+    start = time.perf_counter()
+    run_callable()
+    elapsed_seconds = time.perf_counter() - start
+    finished_at = datetime.now(timezone.utc).isoformat()
+    return elapsed_seconds, started_at, finished_at
+
+
+def build_timing_summary(
+    task: str,
+    config: dict,
+    requested_steps: int,
+    completed_steps: int | None,
+    elapsed_seconds: float,
+    started_at: str,
+    finished_at: str,
+) -> dict:
+    payload = {
+        "task": task,
+        "started_at_utc": started_at,
+        "finished_at_utc": finished_at,
+        "elapsed_wall_time_s": float(elapsed_seconds),
+        "elapsed_wall_time_min": float(elapsed_seconds / 60.0),
+        "requested_steps": int(requested_steps),
+        "completed_steps": None if completed_steps is None else int(completed_steps),
+        "average_wall_time_per_step_s": None,
+    }
+
+    if completed_steps and completed_steps > 0:
+        payload["average_wall_time_per_step_s"] = float(elapsed_seconds / completed_steps)
+
+    if task in {"nvt", "nve"}:
+        time_step_fs = float(config.get("time_step_fs", 1.0))
+        completed = int(completed_steps or 0)
+        simulated_time_fs = completed * time_step_fs
+        payload["time_step_fs"] = time_step_fs
+        payload["simulated_time_fs"] = float(simulated_time_fs)
+        payload["simulated_time_ps"] = float(simulated_time_fs / 1000.0)
+
+    return payload
+
+
+def write_timing_summary(output_dir: Path, config: dict, summary: dict) -> None:
+    (output_dir / get_timing_file(config)).write_text(
+        yaml.safe_dump(summary, sort_keys=False),
+        encoding="utf-8",
+    )
+
+
+def print_timing_summary(summary: dict) -> None:
+    completed_steps = summary.get("completed_steps")
+    average = summary.get("average_wall_time_per_step_s")
+    print(f"Wall time: {summary['elapsed_wall_time_s']:.3f} s")
+    if completed_steps is not None:
+        print(f"Completed steps: {completed_steps}")
+    if average is not None:
+        print(f"Average wall time per step: {average:.6f} s")
+
+
+def write_run_settings(
+    output_dir: Path,
+    config: dict,
+    model_path: Path,
+    structure_path: Path,
+    timing_summary: dict | None = None,
+) -> None:
     payload = {
         "model_file": model_path.name,
         "structure_file": structure_path.name,
         "settings": config,
     }
+    if timing_summary is not None:
+        payload["timing"] = timing_summary
     (output_dir / "run_settings.yaml").write_text(
         yaml.safe_dump(payload, sort_keys=False),
         encoding="utf-8",

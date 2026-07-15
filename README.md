@@ -172,6 +172,7 @@ Tu modifies ce fichier pour régler:
 - `final_structure_file`
 - `final_structure_format`
 - `log_file`
+- `timing_file`
 - `append_trajectory`
 - `trajectory_interval`
 - `optimizer_log_file`
@@ -197,6 +198,18 @@ outputs/md/optimize/
 avec un sous-dossier par modèle
 et par structure si plusieurs structures sont lancées
 
+Chaque run écrit aussi:
+
+- `run_settings.yaml`
+- `timing_summary.yaml`
+
+Le fichier `timing_summary.yaml` contient notamment:
+
+- le temps mur total du calcul
+- le nombre de pas demandés
+- le nombre de pas effectivement réalisés
+- le temps mur moyen par pas
+
 ### NVT
 
 ```bash
@@ -221,6 +234,7 @@ Tu modifies ce fichier pour régler:
 - `final_structure_file`
 - `final_structure_format`
 - `log_file`
+- `timing_file`
 - `append_trajectory`
 - `trajectory_interval`
 - `thermostat`
@@ -236,6 +250,8 @@ Tu modifies ce fichier pour régler:
 - `remove_translation`
 - `remove_rotation`
 - `log_interval`
+
+Chaque run écrit aussi `timing_summary.yaml` avec le temps mur total et le temps moyen par pas MD.
 
 Thermostats currently supported for NVT:
 
@@ -284,11 +300,14 @@ Tu modifies ce fichier pour régler:
 - `final_structure_file`
 - `final_structure_format`
 - `log_file`
+- `timing_file`
 - `append_trajectory`
 - `trajectory_interval`
 - `time_step_fs`
 - `steps`
 - `log_interval`
+
+Chaque run écrit aussi `timing_summary.yaml` avec le temps mur total et le temps moyen par pas MD.
 
 Pour les sorties, tu peux par exemple utiliser:
 
