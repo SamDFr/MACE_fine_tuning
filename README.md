@@ -320,6 +320,189 @@ Key YAML options:
 - `steps`
 - `log_interval`
 
+## MD YAML Keyword Reference
+
+The MD YAML files share a common set of keywords across `optimize`, `nvt`, and `nve`. Task-specific controls are listed separately below.
+
+### Common Structure Selection Keywords
+
+- `structure_file`
+  Single input structure. This can be a filename inside `inputs/md/`, a path relative to the project root, or an absolute path.
+- `structure_files`
+  Explicit YAML list of multiple input structures processed sequentially in one run.
+- `structure_glob`
+  Glob pattern used to select several input structures automatically, including subdirectories such as `100traj_AIMD/batch_1/POSCAR-*`.
+- `selected_models`
+  YAML list of model filenames to use from `model/`. Use `null` to run all detected models.
+
+Only one structure selection mode is needed. If several are provided, the resolved file set is combined and de-duplicated.
+
+### Common Runtime and I/O Keywords
+
+- `device`
+  Execution device. Supported values: `cpu`, `cuda`.
+- `default_dtype`
+  Floating-point precision passed to the calculator. Typical values: `float32`, `float64`.
+- `output_name`
+  Name of the output subdirectory under `outputs/md/`.
+- `trajectory_file`
+  Output trajectory filename.
+- `trajectory_format`
+  Trajectory format written during the run. Recommended values: `extxyz`, `traj`.
+- `final_structure_file`
+  Filename for the last saved structure.
+- `final_structure_format`
+  Format for the final saved structure. Use `traj` when restart-ready velocities must be preserved reliably.
+- `save_final_structure`
+  If `true`, write the last structure at the end of the run.
+- `log_file`
+  Runtime log filename.
+- `append_log`
+  If `true`, append to an existing runtime log instead of overwriting it.
+- `timing_file`
+  Filename for the wall-time summary YAML. Default output is `timing_summary.yaml`.
+- `append_trajectory`
+  If `true`, append to an existing trajectory file when the chosen writer supports it.
+- `trajectory_interval`
+  Write one trajectory frame every `N` MD or optimization steps.
+- `log_interval`
+  Write one runtime log entry every `N` MD or optimization steps.
+
+### Runtime Log Keywords
+
+- `log_fields`
+  YAML list defining the columns written to `run.log`.
+- `monitored_distances`
+  YAML list of extra geometric observables that can be referenced inside `log_fields`.
+
+Supported built-in `log_fields` values are:
+
+- `step`
+- `time_fs`
+- `temperature_K`
+- `potential_energy_eV`
+- `kinetic_energy_eV`
+- `total_energy_eV`
+- `natoms`
+- `max_force_eV_A`
+
+Each entry in `monitored_distances` must define:
+
+- `name`
+  Column name exposed to `log_fields`.
+- `kind`
+  Supported values: `atom_distance`, `com_z_distance`, `average_z_distance`.
+
+Additional required keys depend on `kind`:
+
+- `atom_distance`
+  Requires `atom_indices` and optional `index_base`.
+- `com_z_distance`
+  Requires `group_a_indices`, `group_b_indices`, and optional `index_base`.
+- `average_z_distance`
+  Requires `group_a_indices`, `group_b_indices`, and optional `index_base`.
+
+Indexing notes:
+
+- `index_base: 1` means human-style indexing, consistent with VASP or LAMMPS atom numbering.
+- `index_base: 0` means Python-style indexing.
+
+### Early Stop Keywords
+
+- `enable_stopcar`
+  Enable periodic checks for a `STOPCAR` file in the run output directory.
+- `stopcar_file`
+  Name of the stop file to monitor.
+- `stop_check_interval`
+  Check the stop condition every `N` steps.
+- `stop_on_custom_condition`
+  Enable a Python callback for early stopping.
+- `stop_condition_module`
+  Python module name containing the callback function.
+- `stop_condition_function`
+  Function name to call inside that module.
+- `create_stopcar_on_custom_condition`
+  If `true`, write a `STOPCAR` file automatically when the custom condition triggers.
+
+If `stop_on_custom_condition: true`, both `stop_condition_module` and `stop_condition_function` must be set.
+
+### Built-in Gas-Surface Scattering Stop Keywords
+
+These options are used only with:
+
+- `stop_condition_module: stop_conditions`
+- `stop_condition_function: gas_surface_scattering_reflection_stop`
+
+Keywords:
+
+- `scattering_molecule_indices`
+  Atom indices defining the incident molecule.
+- `scattering_surface_top_indices`
+  Atom indices defining the top reference layer of the slab.
+- `scattering_index_base`
+  Index convention for the two lists above. Use `1` for VASP/LAMMPS-style numbering.
+- `scattering_activation_distance_a`
+  The stop logic arms only after the molecule-surface distance first becomes smaller than this value.
+- `scattering_stop_distance_a`
+  After the stop logic is armed, the run stops when the molecule moves away and exceeds this value.
+- `scattering_surface_z_mode`
+  Surface height definition. Supported values currently target the top-layer reference, with `average` as the standard choice.
+- `scattering_require_outgoing`
+  If `true`, the stop logic also requires the molecule to move outward before stopping.
+- `scattering_distance_hysteresis_a`
+  Small numerical tolerance used to avoid noisy threshold triggering.
+
+### Optimize-Specific Keywords
+
+- `optimizer`
+  ASE optimizer name. Supported values in the current script: `bfgs`, `lbfgs`, `fire`.
+- `fmax`
+  Force convergence threshold in `eV/A`.
+- `steps`
+  Maximum number of optimization steps.
+- `optimizer_log_file`
+  Optimizer text log written by ASE.
+- `optimizer_restart_file`
+  Optimizer restart data written by ASE when supported by the optimizer.
+
+### NVT-Specific Keywords
+
+- `thermostat`
+  Supported values: `nose-hoover`, `langevin`, `berendsen`, `bussi`.
+- `temperature_k`
+  Target temperature in kelvin.
+- `time_step_fs`
+  Integration timestep in femtoseconds.
+- `steps`
+  Number of MD integration steps.
+- `tdamp_fs`
+  Nose-Hoover damping time in femtoseconds.
+- `tchain`
+  Number of Nose-Hoover chain thermostats.
+- `tloop`
+  Number of thermostat sub-iterations for Nose-Hoover.
+- `friction`
+  Langevin friction coefficient.
+- `taut_fs`
+  Thermostat relaxation time used by Berendsen and Bussi.
+- `initialize_velocities`
+  If `true`, initialize velocities from the requested temperature before the run.
+- `remove_translation`
+  Remove center-of-mass translation after velocity initialization.
+- `remove_rotation`
+  Remove overall rotation after velocity initialization.
+
+`nose-hoover` is the default thermostat.
+
+### NVE-Specific Keywords
+
+- `time_step_fs`
+  Integration timestep in femtoseconds.
+- `steps`
+  Number of MD integration steps.
+
+`run_nve.py` expects input structures that already contain velocities if a physically meaningful NVE trajectory is required.
+
 ## Outputs
 
 Correlation outputs are written to:
