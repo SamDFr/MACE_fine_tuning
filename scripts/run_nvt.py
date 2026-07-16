@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from _md_shared import (
     attach_trajectory_and_log,
+    attach_stop_monitor,
     build_timing_summary,
     load_run_config,
     load_atoms,
@@ -26,6 +27,7 @@ from _md_shared import (
 def main() -> None:
     config_path = parse_config_cli("nvt")
     config, resolved_config_path = load_run_config("nvt", config_file=str(config_path))
+    config["_task_name"] = "nvt"
     model_paths = select_model_files(config)
     structure_paths = select_structure_files(config)
     output_root = prepare_named_output_dir("nvt", config)
@@ -45,7 +47,10 @@ def main() -> None:
 
             dyn = setup_nvt(atoms, config=config)
             attach_trajectory_and_log(dyn, atoms, output_dir, config=config)
-            elapsed_seconds, started_at, finished_at = measure_run(lambda: dyn.run(steps))
+            stopcar_path = attach_stop_monitor(dyn, atoms, output_dir, config=config)
+            elapsed_seconds, started_at, finished_at, stopped_early, stop_reason = measure_run(
+                lambda: dyn.run(steps)
+            )
             save_final_structure(atoms, output_dir, config=config)
             completed_steps = int(getattr(dyn, "nsteps", steps))
             timing_summary = build_timing_summary(
@@ -56,6 +61,8 @@ def main() -> None:
                 elapsed_seconds=elapsed_seconds,
                 started_at=started_at,
                 finished_at=finished_at,
+                stopped_early=stopped_early,
+                stop_reason=stop_reason,
             )
             write_timing_summary(output_dir, config, timing_summary)
             write_run_settings(
@@ -70,6 +77,7 @@ def main() -> None:
             print(f"Completed calculation for structure: {structure_path.name}")
             print(f"Completed calculation for model: {model_path.name}")
             print(f"Outputs written to: {output_dir}")
+            print(f"STOPCAR path: {stopcar_path}")
             print_timing_summary(timing_summary)
 
 

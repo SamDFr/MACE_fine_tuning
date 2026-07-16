@@ -16,9 +16,47 @@ trajectory_file: trajectory.extxyz
 trajectory_format: extxyz
 final_structure_file: final_structure.extxyz
 final_structure_format: extxyz
+save_final_structure: true
 log_file: run.log
+append_log: false
+log_fields:
+  - step
+  - time_fs
+  - temperature_K
+  - potential_energy_eV
+  - kinetic_energy_eV
+  - total_energy_eV
 append_trajectory: true
 trajectory_interval: 1
+enable_stopcar: true
+stopcar_file: STOPCAR
+stop_check_interval: 1
+stop_on_custom_condition: false
+# stop_condition_module: stop_conditions
+# stop_condition_function: gas_surface_scattering_reflection_stop
+# create_stopcar_on_custom_condition: true
+
+# Example for gas-surface scattering stop logic:
+# scattering_molecule_indices: [1, 2]
+# scattering_surface_top_indices: [259, 260, 261, 262]
+# scattering_index_base: 1
+# scattering_activation_distance_a: 6.0
+# scattering_stop_distance_a: 8.0
+# scattering_surface_z_mode: average
+# scattering_require_outgoing: true
+# scattering_distance_hysteresis_a: 1.0e-3
+#
+# Example extra distances in run.log:
+# monitored_distances:
+#   - name: NO_bond
+#     kind: atom_distance
+#     atom_indices: [1, 2]
+#     index_base: 1
+#   - name: NO_surface_height
+#     kind: average_z_distance
+#     group_a_indices: [1, 2]
+#     group_b_indices: [259, 260, 261, 262]
+#     index_base: 1
 
 time_step_fs: 0.5
 steps: 10000

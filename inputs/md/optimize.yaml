@@ -16,11 +16,24 @@ trajectory_file: trajectory.extxyz
 trajectory_format: extxyz
 final_structure_file: final_structure.extxyz
 final_structure_format: extxyz
+save_final_structure: true
 log_file: run.log
+append_log: false
+log_fields:
+  - step
+  - potential_energy_eV
+  - max_force_eV_A
 append_trajectory: true
 trajectory_interval: 10
 optimizer_log_file: optimizer.log
 optimizer_restart_file: optimizer.restart
+enable_stopcar: true
+stopcar_file: STOPCAR
+stop_check_interval: 1
+stop_on_custom_condition: false
+# stop_condition_module: my_stop_conditions
+# stop_condition_function: should_stop
+# create_stopcar_on_custom_condition: true
 
 optimizer: fire
 fmax: 0.01

@@ -62,6 +62,11 @@ model/
 └── seed_3.model
 ```
 
+Model selection for MD and optimization is controlled through YAML:
+
+- `selected_models: null` uses all detected models in `model/`
+- `selected_models: ['seed_2.model']` restricts the run to specific model files
+
 ## Correlation Analysis Inputs
 
 Place reference files in `inputs/correlation/`.
@@ -197,12 +202,22 @@ Key YAML options:
 - `trajectory_format`
 - `final_structure_file`
 - `final_structure_format`
+- `save_final_structure`
 - `log_file`
+- `append_log`
+- `log_fields`
 - `timing_file`
 - `append_trajectory`
 - `trajectory_interval`
 - `optimizer_log_file`
 - `optimizer_restart_file`
+- `enable_stopcar`
+- `stopcar_file`
+- `stop_check_interval`
+- `stop_on_custom_condition`
+- `stop_condition_module`
+- `stop_condition_function`
+- `create_stopcar_on_custom_condition`
 - `optimizer`
 - `fmax`
 - `steps`
@@ -229,10 +244,20 @@ Key YAML options:
 - `trajectory_format`
 - `final_structure_file`
 - `final_structure_format`
+- `save_final_structure`
 - `log_file`
+- `append_log`
+- `log_fields`
 - `timing_file`
 - `append_trajectory`
 - `trajectory_interval`
+- `enable_stopcar`
+- `stopcar_file`
+- `stop_check_interval`
+- `stop_on_custom_condition`
+- `stop_condition_module`
+- `stop_condition_function`
+- `create_stopcar_on_custom_condition`
 - `thermostat`
 - `temperature_k`
 - `time_step_fs`
@@ -277,10 +302,20 @@ Key YAML options:
 - `trajectory_format`
 - `final_structure_file`
 - `final_structure_format`
+- `save_final_structure`
 - `log_file`
+- `append_log`
+- `log_fields`
 - `timing_file`
 - `append_trajectory`
 - `trajectory_interval`
+- `enable_stopcar`
+- `stopcar_file`
+- `stop_check_interval`
+- `stop_on_custom_condition`
+- `stop_condition_module`
+- `stop_condition_function`
+- `create_stopcar_on_custom_condition`
 - `time_step_fs`
 - `steps`
 - `log_interval`
@@ -308,6 +343,7 @@ Depending on the selected task and YAML settings, the output directory may conta
 - `optimizer.restart`
 - `run_settings.yaml`
 - `timing_summary.yaml`
+- `STOPCAR`
 
 `timing_summary.yaml` includes:
 
@@ -317,6 +353,10 @@ Depending on the selected task and YAML settings, the output directory may conta
 - average wall time per step
 
 For NVT and NVE, it also includes simulated time information.
+
+Final structures are written only if `save_final_structure: true`.
+
+For restartable outputs with velocities, `traj` and `extxyz` are the recommended formats for `final_structure_format`.
 
 ## Logging and Runtime Information
 
@@ -337,6 +377,119 @@ For each individual run, the scripts print:
 - the final timing summary
 
 The resolved YAML file path is also stored in `run_settings.yaml`.
+
+The runtime log file is configurable and can include:
+
+- step number
+- simulated time
+- temperature
+- potential energy
+- kinetic energy
+- total energy
+- maximum force
+- user-defined monitored distances
+
+Example:
+
+```yaml
+log_file: run.log
+append_log: false
+log_fields:
+  - step
+  - time_fs
+  - temperature_K
+  - potential_energy_eV
+  - kinetic_energy_eV
+  - total_energy_eV
+  - NO_bond
+
+monitored_distances:
+  - name: NO_bond
+    kind: atom_distance
+    atom_indices: [1, 2]
+    index_base: 1
+```
+
+Supported monitored distance types are:
+
+- `atom_distance`
+- `com_z_distance`
+- `average_z_distance`
+
+More detailed logging and very frequent write intervals increase I/O and can reduce overall performance, especially for short timesteps or large systems. In practice, the overhead is usually modest when `log_interval` and `trajectory_interval` are not too small, but very aggressive logging can noticeably slow a run.
+
+## Early Stop Control
+
+All three calculation scripts support early termination through a `STOPCAR` file.
+
+If `enable_stopcar: true`, the code checks for `STOPCAR` in the run output directory at the interval defined by `stop_check_interval`. If the file is found, the calculation stops cleanly before the requested number of steps is reached.
+
+The stop status is recorded in `timing_summary.yaml`, including:
+
+- `stopped_early`
+- `stop_reason`
+
+An optional external Python routine can also trigger early termination:
+
+- `stop_on_custom_condition: true`
+- `stop_condition_module: my_stop_conditions`
+- `stop_condition_function: should_stop`
+
+The callable is expected to return either:
+
+- `True` or `False`
+- `(True, "reason")` or `(False, None)`
+
+When `create_stopcar_on_custom_condition: true`, a custom stop condition automatically writes `STOPCAR` before stopping the run.
+
+### Built-in Gas-Surface Scattering Stop Condition
+
+The repository includes a built-in routine for gas-surface scattering trajectories:
+
+- `stop_condition_module: stop_conditions`
+- `stop_condition_function: gas_surface_scattering_reflection_stop`
+
+This routine is designed for cases where a molecule is launched toward a slab and the trajectory should stop only after the molecule has approached the surface and then moved away again.
+
+Required YAML settings:
+
+- `scattering_molecule_indices`
+- `scattering_surface_top_indices`
+- `scattering_activation_distance_a`
+- `scattering_stop_distance_a`
+
+Optional settings:
+
+- `scattering_index_base`
+- `scattering_surface_z_mode`
+- `scattering_require_outgoing`
+- `scattering_distance_hysteresis_a`
+
+The logic is:
+
+1. compute the z-distance between the molecule center of mass and the average z-position of the selected top surface layer
+2. arm the stop criterion only after the molecule has first crossed below `scattering_activation_distance_a`
+3. stop the trajectory only when the molecule later moves away and exceeds `scattering_stop_distance_a`
+
+This avoids stopping immediately at the beginning of the run when the initial molecule-surface distance is already larger than the final stop distance.
+
+Example:
+
+```yaml
+stop_on_custom_condition: true
+stop_condition_module: stop_conditions
+stop_condition_function: gas_surface_scattering_reflection_stop
+create_stopcar_on_custom_condition: true
+
+scattering_molecule_indices: [1, 2]
+scattering_surface_top_indices: [259, 260, 261, 262]
+scattering_index_base: 1
+scattering_activation_distance_a: 6.0
+scattering_stop_distance_a: 8.0
+scattering_surface_z_mode: average
+scattering_require_outgoing: true
+scattering_distance_hysteresis_a: 1.0e-3
+```
 
 ## CPU and GPU Execution
 

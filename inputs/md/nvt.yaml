@@ -16,9 +16,37 @@ trajectory_file: trajectory.extxyz
 trajectory_format: extxyz
 final_structure_file: final_structure.extxyz
 final_structure_format: extxyz
+save_final_structure: true
 log_file: run.log
+append_log: false
+log_fields:
+  - step
+  - time_fs
+  - temperature_K
+  - potential_energy_eV
+  - kinetic_energy_eV
+  - total_energy_eV
 append_trajectory: true
 trajectory_interval: 10
+enable_stopcar: true
+stopcar_file: STOPCAR
+stop_check_interval: 1
+stop_on_custom_condition: false
+# stop_condition_module: my_stop_conditions
+# stop_condition_function: should_stop
+# create_stopcar_on_custom_condition: true
+
+# Example custom distances to include in run.log:
+# monitored_distances:
+#   - name: NO_bond
+#     kind: atom_distance
+#     atom_indices: [1, 2]
+#     index_base: 1
+#   - name: NO_surface_height
+#     kind: average_z_distance
+#     group_a_indices: [1, 2]
+#     group_b_indices: [259, 260, 261, 262]
+#     index_base: 1
 
 thermostat: nose-hoover
 temperature_k: 15.0
