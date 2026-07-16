@@ -1,14 +1,14 @@
-# Projet simple pour MACE fine-tuné
+# MACE Fine-Tuning Analysis and Molecular Dynamics
 
-Ce dépôt est maintenant organisé de façon simple.
+This repository provides a lightweight workflow for:
 
-Tu poses:
+- evaluating one or more fine-tuned MACE models against reference data
+- generating correlation plots for energies and atomic forces
+- running structure optimization, NVT molecular dynamics, and NVE molecular dynamics
 
-- tes modèles dans `model/`
-- tes fichiers d'entrée dans `inputs/`
-- les résultats sortiront dans `outputs/`
+The project is organized around simple input, model, and output directories rather than a packaged application framework.
 
-## Structure
+## Repository Layout
 
 ```text
 .
@@ -28,13 +28,32 @@ Tu poses:
     └── run_nve.py
 ```
 
-## Ce que tu dois faire
+## Installation
 
-### 1. Modèles
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-Mets tes modèles MACE fine-tunés dans `model/`.
+To work with notebooks:
 
-Exemple:
+```bash
+source .venv/bin/activate
+jupyter notebook
+```
+
+## Models
+
+Place fine-tuned MACE model files in `model/`.
+
+Supported model extensions:
+
+- `.model`
+- `.pt`
+- `.pth`
+
+Example:
 
 ```text
 model/
@@ -43,52 +62,45 @@ model/
 └── seed_3.model
 ```
 
-### 2. Données pour corrélations
+## Correlation Analysis Inputs
 
-Mets un ou plusieurs fichiers test dans:
+Place reference files in `inputs/correlation/`.
 
-```text
-inputs/correlation/
-```
-
-Le notebook de corrélation détecte automatiquement s'il y a plusieurs fichiers à analyser.
-
-Formats actuellement pris en charge automatiquement:
+Supported formats:
 
 - `vasprun*.xml`
 - `*.traj`
 - `*.extxyz`
 - `*.xyz`
 
-Pour les `vasprun.xml` et `traj` ASE, le notebook relit automatiquement les énergies et forces de référence si elles sont stockées dans le calculateur attaché.
+For `vasprun.xml` and ASE trajectory files, the notebook reads reference energies and forces from the attached calculator when available.
 
-### 3. Données pour MD
+## MD Inputs
 
-Mets la structure à utiliser dans:
+Place structure files and YAML input files in `inputs/md/`.
 
-```text
-inputs/md/
-```
+Supported structure formats include:
 
-Exemples:
+- `POSCAR`
+- `CONTCAR`
+- `.traj`
+- `.xyz`
+- `.extxyz`
+- `.vasp`
+- `.cif`
+- `vasprun.xml`
 
-- `inputs/md/POSCAR`
-- `inputs/md/POSCAR-1`
-- `inputs/md/structure.xyz`
-- `inputs/md/structure.traj`
-- `inputs/md/structure.extxyz`
-- `inputs/md/vasprun.xml`
+The MD scripts can process:
 
-Les scripts MD lisent maintenant leurs paramètres de simulation depuis des fichiers YAML dans `inputs/md/`.
-Ils peuvent aussi traiter plusieurs structures en batch.
+- a single structure file
+- an explicit list of structure files
+- a glob pattern
 
-Pour un batch de plusieurs structures `POSCAR-X`, tu peux utiliser par exemple:
+Examples:
 
 ```yaml
-structure_glob: "POSCAR-*"
+structure_file: POSCAR-1
 ```
-
-ou une liste explicite:
 
 ```yaml
 structure_files:
@@ -97,68 +109,82 @@ structure_files:
   - POSCAR-162
 ```
 
+```yaml
+structure_glob: "POSCAR-*"
+```
+
+Subdirectories under `inputs/md/` are supported when explicitly referenced, for example:
+
+```yaml
+structure_file: 100traj_AIMD/batch_1/POSCAR-1
+```
+
+or:
+
+```yaml
+structure_glob: "100traj_AIMD/batch_1/POSCAR-*"
+```
+
 ## Notebooks
 
-### Corrélations
+### Correlation Notebook
 
-Ouvre:
+Use [notebooks/01_correlation_plots.ipynb](/Users/samuel/Desktop/postdoc_PhLAM/codes/MACE_fine_tuning/notebooks/01_correlation_plots.ipynb).
 
-```text
-notebooks/01_correlation_plots.ipynb
-```
+The notebook:
 
-Ce notebook:
+- detects all models in `model/`
+- detects reference files in `inputs/correlation/`
+- supports multiple models and multiple input files
+- writes results to `outputs/correlation/`
 
-- cherche automatiquement tous les modèles dans `model/`
-- cherche automatiquement un ou plusieurs fichiers dans `inputs/correlation/`
-- écrit les résultats dans `outputs/correlation/`
-- permet aussi de limiter l'analyse à certains fichiers
-- permet aussi d'échantillonner les frames avec un stride
+Generated outputs include:
 
-Sorties:
+- one energy parity plot per model
+- one force norm parity plot per model
+- `Fx`, `Fy`, `Fz` parity plots per species and per model
+- force-direction analysis per model
+- a global model-comparison summary
 
-- un sous-dossier par modèle dans `outputs/correlation/`
-- un résumé global comparant les modèles
-- une figure de corrélation énergie par modèle
-- une figure de corrélation sur la norme des forces par modèle
-- une figure `Fx/Fy/Fz` par espèce atomique et par modèle
-- une figure d'analyse de direction des forces par modèle
+Useful notebook settings:
 
-Réglages utiles en haut du notebook:
+- `SELECTED_FILES = None` to process all detected files
+- `SELECTED_FILES = ['file1.xml', 'file2.traj']` to restrict the analysis
+- `FRAME_STRIDE = 1` to use all frames
+- `FRAME_STRIDE = 10` to keep one frame out of ten
 
-- `SELECTED_FILES = None` pour traiter tous les fichiers détectés
-- `SELECTED_FILES = ['file1.xml', 'file2.traj']` pour n'en traiter qu'une partie
-- `FRAME_STRIDE = 1` pour garder toutes les structures
-- `FRAME_STRIDE = 10` pour garder 1 frame sur 10
+### MD Input Check Notebook
 
-### Vérification locale avant MD
+Use [notebooks/02_check_md_inputs.ipynb](/Users/samuel/Desktop/postdoc_PhLAM/codes/MACE_fine_tuning/notebooks/02_check_md_inputs.ipynb).
 
-Ouvre:
+The notebook is intended for local inspection before running MD. It helps verify:
 
-```text
-notebooks/02_check_md_inputs.ipynb
-```
+- detected models
+- detected structure files
+- whether velocities are available for NVE
+- the structure read by ASE
 
-Ce notebook permet de:
+## Command-Line Usage
 
-- vérifier quels modèles ont été trouvés
-- vérifier quel fichier structure a été trouvé
-- vérifier si des vitesses sont présentes pour NVE
-- voir rapidement la structure lue par ASE
+Each MD script accepts an optional YAML file path as a positional argument.
 
-## Scripts Python
+If no argument is provided, the default file is used:
 
-### Optimisation
+- `inputs/md/optimize.yaml`
+- `inputs/md/nvt.yaml`
+- `inputs/md/nve.yaml`
+
+Relative YAML paths are resolved from `inputs/md/` first, then from the project root.
+
+### Structure Optimization
 
 ```bash
 python3 scripts/optimize_structure.py
+python3 scripts/optimize_structure.py inputs/md/optimize.yaml
+python3 scripts/optimize_structure.py inputs/md/my_optimize_batch.yaml
 ```
 
-Le script lit automatiquement:
-
-- `inputs/md/optimize.yaml`
-
-Tu modifies ce fichier pour régler:
+Key YAML options:
 
 - `structure_file`
 - `structure_files`
@@ -182,45 +208,15 @@ Tu modifies ce fichier pour régler:
 - `steps`
 - `log_interval`
 
-Pour les sorties, tu peux par exemple utiliser:
-
-- `trajectory_format: extxyz`
-- `trajectory_format: traj`
-- `trajectory_format: xyz`
-- `trajectory_format: lammps-dump-text`
-
-Sorties dans:
-
-```text
-outputs/md/optimize/
-```
-
-avec un sous-dossier par modèle
-et par structure si plusieurs structures sont lancées
-
-Chaque run écrit aussi:
-
-- `run_settings.yaml`
-- `timing_summary.yaml`
-
-Le fichier `timing_summary.yaml` contient notamment:
-
-- le temps mur total du calcul
-- le nombre de pas demandés
-- le nombre de pas effectivement réalisés
-- le temps mur moyen par pas
-
-### NVT
+### NVT Molecular Dynamics
 
 ```bash
 python3 scripts/run_nvt.py
+python3 scripts/run_nvt.py inputs/md/nvt.yaml
+python3 scripts/run_nvt.py inputs/md/nvt_batch_300K.yaml
 ```
 
-Le script lit automatiquement:
-
-- `inputs/md/nvt.yaml`
-
-Tu modifies ce fichier pour régler:
+Key YAML options:
 
 - `structure_file`
 - `structure_files`
@@ -251,42 +247,24 @@ Tu modifies ce fichier pour régler:
 - `remove_rotation`
 - `log_interval`
 
-Chaque run écrit aussi `timing_summary.yaml` avec le temps mur total et le temps moyen par pas MD.
+Supported thermostats:
 
-Thermostats currently supported for NVT:
-
-- `nose-hoover` (default)
+- `nose-hoover`
 - `langevin`
 - `berendsen`
 - `bussi`
 
-Pour les sorties, tu peux par exemple utiliser:
+`nose-hoover` is the default.
 
-- `trajectory_format: extxyz`
-- `trajectory_format: traj`
-- `trajectory_format: xyz`
-- `trajectory_format: lammps-dump-text`
-
-Sorties dans:
-
-```text
-outputs/md/nvt/
-```
-
-avec un sous-dossier par modèle
-et par structure si plusieurs structures sont lancées
-
-### NVE
+### NVE Molecular Dynamics
 
 ```bash
 python3 scripts/run_nve.py
+python3 scripts/run_nve.py inputs/md/nve.yaml
+python3 scripts/run_nve.py inputs/md/nve_short_test.yaml
 ```
 
-Le script lit automatiquement:
-
-- `inputs/md/nve.yaml`
-
-Tu modifies ce fichier pour régler:
+Key YAML options:
 
 - `structure_file`
 - `structure_files`
@@ -307,51 +285,86 @@ Tu modifies ce fichier pour régler:
 - `steps`
 - `log_interval`
 
-Chaque run écrit aussi `timing_summary.yaml` avec le temps mur total et le temps moyen par pas MD.
+## Outputs
 
-Pour les sorties, tu peux par exemple utiliser:
-
-- `trajectory_format: extxyz`
-- `trajectory_format: traj`
-- `trajectory_format: xyz`
-- `trajectory_format: lammps-dump-text`
-
-Sorties dans:
+Correlation outputs are written to:
 
 ```text
-outputs/md/nve/
+outputs/correlation/
 ```
 
-avec un sous-dossier par modèle
-et par structure si plusieurs structures sont lancées
+MD outputs are written to:
 
-## Dépendances minimales
+```text
+outputs/md/<output_name>/<structure_name>/<model_name>/
+```
+
+Depending on the selected task and YAML settings, the output directory may contain:
+
+- trajectory files
+- final structure files
+- `run.log`
+- `optimizer.log`
+- `optimizer.restart`
+- `run_settings.yaml`
+- `timing_summary.yaml`
+
+`timing_summary.yaml` includes:
+
+- total wall time
+- requested number of steps
+- completed number of steps
+- average wall time per step
+
+For NVT and NVE, it also includes simulated time information.
+
+## Logging and Runtime Information
+
+At launch, each script prints:
+
+- the selected task
+- the YAML input file used
+- the output root directory
+- the selected device and dtype
+- the selected models
+- the selected structures
+
+For each individual run, the scripts print:
+
+- the structure being processed
+- the model being processed
+- the corresponding output directory
+- the final timing summary
+
+The resolved YAML file path is also stored in `run_settings.yaml`.
+
+## CPU and GPU Execution
+
+The scripts support:
+
+- `device: cpu`
+- `device: cuda`
+
+For CPU runs, PyTorch may use multiple CPU threads depending on the runtime environment. This repository does not currently expose thread control directly in the YAML, so multi-thread CPU usage is typically controlled through environment variables such as:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+export OMP_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
 ```
 
-Si tu veux lancer les notebooks:
+This provides multi-threaded CPU execution within a single process. The scripts do not currently implement MPI or multi-node parallelism for a single trajectory.
 
-```bash
-source .venv/bin/activate
-jupyter notebook
-```
+## Cluster Usage
 
-## Cluster
+A typical cluster workflow is:
 
-Le plus simple sur cluster est:
+1. copy the repository to the cluster
+2. create the Python environment on the cluster
+3. prepare one or more YAML input files in `inputs/md/`
+4. submit the desired script through a batch job
 
-1. copier ce dépôt sur le cluster
-2. créer l'environnement Python sur le cluster
-3. modifier `inputs/md/optimize.yaml`, `inputs/md/nvt.yaml` ou `inputs/md/nve.yaml`
-4. lancer le script Python voulu depuis un job batch
-
-Exemple CPU avec plusieurs `POSCAR-X`:
-
-Dans le YAML:
+Example NVT YAML:
 
 ```yaml
 structure_glob: "POSCAR-*"
@@ -371,7 +384,7 @@ trajectory_interval: 10
 log_interval: 10
 ```
 
-Exemple `job.slurm`:
+Example Slurm job:
 
 ```bash
 #!/bin/bash
@@ -385,30 +398,37 @@ Exemple `job.slurm`:
 
 set -euo pipefail
 
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
 cd /path/to/MACE_fine_tuning
 source .venv/bin/activate
-python3 scripts/run_nvt.py
+python3 scripts/run_nvt.py inputs/md/nvt_batch_300K.yaml
 ```
 
-Pour GPU:
+For GPU jobs:
 
-- installe une version de `torch` compatible CUDA sur le cluster
-- mets `device: cuda` dans le YAML
-- soumets le job sur une partition GPU
+- install a CUDA-compatible PyTorch build on the target system
+- set `device: cuda` in the YAML file
+- submit the job to a GPU partition
 
-Les sorties seront rangées comme:
+## NVE Requirement
 
-```text
-outputs/md/<output_name>/<structure_name>/<model_name>/
-```
+`run_nve.py` requires initial velocities to already be present in the input structure.
 
-## Remarque importante pour NVE
+If the input file does not contain velocities, a typical workflow is:
 
-Le script `run_nve.py` demande des vitesses déjà présentes dans le fichier d'entrée.
+1. run optimization or NVT first
+2. restart NVE from a structure or trajectory frame that already contains velocities
 
-Si ton fichier n'a pas de vitesses, il faut commencer par:
+## Dependencies
 
-- une optimisation
-- ou une NVT
+The project dependencies are listed in [requirements.txt](/Users/samuel/Desktop/postdoc_PhLAM/codes/MACE_fine_tuning/requirements.txt), including:
 
-puis relancer NVE à partir d'une structure qui contient des vitesses.
+- `torch`
+- `mace-torch`
+- `cuequivariance`
+- `cuequivariance-torch`
+
+`cuequivariance` support may accelerate some MACE calculations depending on the installed PyTorch/MACE stack and the hardware configuration.

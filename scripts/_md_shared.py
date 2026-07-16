@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from datetime import datetime, timezone
 import time
@@ -52,18 +53,55 @@ def find_model_files() -> list[Path]:
     return candidates
 
 
-def load_run_config(task: str) -> dict:
-    config_path = KNOWN_CONFIG_FILES[task]
+def resolve_config_path(task: str, config_file: str | None = None) -> Path:
+    if config_file is None:
+        return KNOWN_CONFIG_FILES[task]
+
+    candidate = Path(config_file).expanduser()
+    if candidate.is_absolute():
+        return candidate
+
+    candidate_in_inputs = INPUT_MD_DIR / candidate
+    if candidate_in_inputs.exists():
+        return candidate_in_inputs
+
+    candidate_relative_to_root = ROOT / candidate
+    if candidate_relative_to_root.exists():
+        return candidate_relative_to_root
+
+    return candidate_relative_to_root
+
+
+def parse_config_cli(task: str) -> Path:
+    parser = argparse.ArgumentParser(
+        description=f"Run MACE {task} using a YAML input file.",
+    )
+    parser.add_argument(
+        "config",
+        nargs="?",
+        default=None,
+        help=(
+            "YAML input file. If omitted, the default file in inputs/md/ is used "
+            f"({KNOWN_CONFIG_FILES[task].name}). Relative paths are resolved from "
+            "inputs/md/ first, then from the project root."
+        ),
+    )
+    args = parser.parse_args()
+    return resolve_config_path(task, args.config)
+
+
+def load_run_config(task: str, config_file: str | None = None) -> tuple[dict, Path]:
+    config_path = resolve_config_path(task, config_file)
     if not config_path.exists():
         raise FileNotFoundError(
             f"Missing config file: {config_path}. Fill this YAML file before launching {task}."
         )
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if payload is None:
-        return {}
+        return {}, config_path
     if not isinstance(payload, dict):
         raise ValueError(f"Config file must contain a YAML mapping: {config_path}")
-    return payload
+    return payload, config_path
 
 
 def select_model_files(config: dict) -> list[Path]:
@@ -197,6 +235,51 @@ def prepare_named_output_dir(task: str, config: dict) -> Path:
     path = OUTPUT_MD_DIR / output_name
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def print_run_header(
+    task: str,
+    config_path: Path,
+    config: dict,
+    model_paths: list[Path],
+    structure_paths: list[Path],
+    output_root: Path,
+) -> None:
+    print("")
+    print("=" * 80)
+    print(f"Task: {task}")
+    print(f"Config file: {config_path}")
+    print(f"Output root: {output_root}")
+    print(f"Device: {config.get('device', 'cpu')}")
+    print(f"Default dtype: {config.get('default_dtype', 'float32')}")
+    print(f"Models selected ({len(model_paths)}):")
+    for model_path in model_paths:
+        print(f"  - {model_path}")
+    print(f"Structures selected ({len(structure_paths)}):")
+    for structure_path in structure_paths:
+        print(f"  - {structure_path}")
+    print("=" * 80)
+    print("")
+
+
+def print_structure_header(task: str, structure_path: Path, structure_index: int, total_structures: int) -> None:
+    print("")
+    print("-" * 80)
+    print(f"{task.upper()} structure {structure_index}/{total_structures}")
+    print(f"Geometry input: {structure_path}")
+    print("-" * 80)
+
+
+def print_model_header(
+    task: str,
+    model_path: Path,
+    model_index: int,
+    total_models: int,
+    output_dir: Path,
+) -> None:
+    print(f"Calculation: {task.upper()}")
+    print(f"Model {model_index}/{total_models}: {model_path}")
+    print(f"Output directory: {output_dir}")
 
 
 def get_output_file_settings(config: dict, key_prefix: str, default_name: str, default_format: str) -> tuple[str, str]:
@@ -447,6 +530,7 @@ def write_run_settings(
     config: dict,
     model_path: Path,
     structure_path: Path,
+    config_path: Path | None = None,
     timing_summary: dict | None = None,
 ) -> None:
     payload = {
@@ -454,6 +538,8 @@ def write_run_settings(
         "structure_file": structure_path.name,
         "settings": config,
     }
+    if config_path is not None:
+        payload["config_file"] = str(config_path)
     if timing_summary is not None:
         payload["timing"] = timing_summary
     (output_dir / "run_settings.yaml").write_text(
