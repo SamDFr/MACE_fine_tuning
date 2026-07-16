@@ -14,8 +14,20 @@ default_dtype: float32
 output_name: nve
 trajectory_file: trajectory.extxyz
 trajectory_format: extxyz
+# Or write several trajectory formats at once:
+# trajectory_files:
+#   - file: trajectory.traj
+#     format: traj
+#   - file: trajectory.extxyz
+#     format: extxyz
 final_structure_file: final_structure.extxyz
 final_structure_format: extxyz
+# Or write several final-structure formats at once:
+# final_structure_files:
+#   - file: final_structure.traj
+#     format: traj
+#   - file: final_structure.extxyz
+#     format: extxyz
 save_final_structure: true
 log_file: run.log
 append_log: false

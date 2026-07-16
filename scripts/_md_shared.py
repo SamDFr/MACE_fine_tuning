@@ -315,10 +315,54 @@ def print_model_header(
     print(f"Output directory: {output_dir}")
 
 
-def get_output_file_settings(config: dict, key_prefix: str, default_name: str, default_format: str) -> tuple[str, str]:
-    filename = config.get(f"{key_prefix}_file", default_name)
-    file_format = config.get(f"{key_prefix}_format", default_format)
-    return str(filename), str(file_format)
+def get_output_targets(config: dict, key_prefix: str, default_name: str, default_format: str) -> list[tuple[str, str]]:
+    plural_key = f"{key_prefix}_files"
+    singular_file_key = f"{key_prefix}_file"
+    singular_format_key = f"{key_prefix}_format"
+    plural_format_key = f"{key_prefix}_formats"
+
+    targets = config.get(plural_key)
+    if targets is not None:
+        if not isinstance(targets, list) or not targets:
+            raise ValueError(f"`{plural_key}` must be a non-empty YAML list.")
+
+        resolved_targets = []
+        for entry in targets:
+            if isinstance(entry, dict):
+                filename = entry.get("file")
+                file_format = entry.get("format")
+                if not filename or not file_format:
+                    raise ValueError(
+                        f"Each `{plural_key}` entry must define both `file` and `format`."
+                    )
+                resolved_targets.append((str(filename), str(file_format)))
+                continue
+
+            if isinstance(entry, str):
+                raise ValueError(
+                    f"String entries are not supported in `{plural_key}`. "
+                    "Use mappings with `file` and `format` keys."
+                )
+
+            raise ValueError(f"Unsupported `{plural_key}` entry: {entry!r}")
+        return resolved_targets
+
+    filename = config.get(singular_file_key, default_name)
+    file_format = config.get(singular_format_key, default_format)
+
+    extra_formats = config.get(plural_format_key)
+    if extra_formats is None:
+        return [(str(filename), str(file_format))]
+
+    if not isinstance(extra_formats, list) or not extra_formats:
+        raise ValueError(f"`{plural_format_key}` must be a non-empty YAML list when provided.")
+
+    targets = [(str(filename), str(file_format))]
+    stem = Path(str(filename)).stem
+    for extra_format in extra_formats:
+        extra_format_str = str(extra_format)
+        targets.append((f"{stem}.{extra_format_str}", extra_format_str))
+    return targets
 
 
 def _write_lammps_dump_frame(path: Path, atoms, step: int, append: bool = True) -> None:
@@ -542,24 +586,25 @@ def save_final_structure(atoms, output_dir: Path, config: dict) -> None:
         print("Final structure writing disabled by input flag `save_final_structure: false`.")
         return
 
-    filename, file_format = get_output_file_settings(
+    output_targets = get_output_targets(
         config,
         key_prefix="final_structure",
         default_name="final_structure.extxyz",
         default_format="extxyz",
     )
-    normalized_format = file_format.lower()
     velocities = atoms.get_velocities()
-    if velocities is not None and normalized_format not in FINAL_STRUCTURE_FORMATS_WITH_VELOCITIES:
-        print(
-            "Warning: the selected final structure format does not reliably preserve velocities. "
-            f"Use one of {sorted(FINAL_STRUCTURE_FORMATS_WITH_VELOCITIES)} for restartable outputs."
-        )
-    write(str(output_dir / filename), atoms, format=file_format)
+    for filename, file_format in output_targets:
+        normalized_format = file_format.lower()
+        if velocities is not None and normalized_format not in FINAL_STRUCTURE_FORMATS_WITH_VELOCITIES:
+            print(
+                "Warning: the selected final structure format does not reliably preserve velocities. "
+                f"Use one of {sorted(FINAL_STRUCTURE_FORMATS_WITH_VELOCITIES)} for restartable outputs."
+            )
+        write(str(output_dir / filename), atoms, format=file_format)
 
 
 def attach_trajectory_and_log(dynamics, atoms, output_dir: Path, config: dict) -> None:
-    trajectory_file, trajectory_format = get_output_file_settings(
+    trajectory_targets = get_output_targets(
         config,
         key_prefix="trajectory",
         default_name="trajectory.extxyz",
@@ -568,19 +613,19 @@ def attach_trajectory_and_log(dynamics, atoms, output_dir: Path, config: dict) -
     trajectory_interval = int(config.get("trajectory_interval", config.get("log_interval", 10)))
     append_trajectory = bool(config.get("append_trajectory", True))
 
-    trajectory_path = output_dir / trajectory_file
-
     def write_frame() -> None:
-        normalized_format = trajectory_format.lower()
-        if normalized_format in {"lammps-dump-text", "lammpstrj", "lammps-dump"}:
-            _write_lammps_dump_frame(
-                trajectory_path,
-                atoms,
-                step=getattr(dynamics, "nsteps", 0),
-                append=append_trajectory,
-            )
-            return
-        write(str(trajectory_path), atoms, format=trajectory_format, append=append_trajectory)
+        for trajectory_file, trajectory_format in trajectory_targets:
+            trajectory_path = output_dir / trajectory_file
+            normalized_format = trajectory_format.lower()
+            if normalized_format in {"lammps-dump-text", "lammpstrj", "lammps-dump"}:
+                _write_lammps_dump_frame(
+                    trajectory_path,
+                    atoms,
+                    step=getattr(dynamics, "nsteps", 0),
+                    append=append_trajectory,
+                )
+                continue
+            write(str(trajectory_path), atoms, format=trajectory_format, append=append_trajectory)
 
     dynamics.attach(write_frame, interval=trajectory_interval)
     attach_runtime_logger(dynamics, atoms, output_dir, config)

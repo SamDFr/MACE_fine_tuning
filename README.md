@@ -200,8 +200,10 @@ Key YAML options:
 - `output_name`
 - `trajectory_file`
 - `trajectory_format`
+- `trajectory_files`
 - `final_structure_file`
 - `final_structure_format`
+- `final_structure_files`
 - `save_final_structure`
 - `log_file`
 - `append_log`
@@ -242,8 +244,10 @@ Key YAML options:
 - `output_name`
 - `trajectory_file`
 - `trajectory_format`
+- `trajectory_files`
 - `final_structure_file`
 - `final_structure_format`
+- `final_structure_files`
 - `save_final_structure`
 - `log_file`
 - `append_log`
@@ -300,8 +304,10 @@ Key YAML options:
 - `output_name`
 - `trajectory_file`
 - `trajectory_format`
+- `trajectory_files`
 - `final_structure_file`
 - `final_structure_format`
+- `final_structure_files`
 - `save_final_structure`
 - `log_file`
 - `append_log`
@@ -346,13 +352,17 @@ Only one structure selection mode is needed. If several are provided, the resolv
 - `output_name`
   Name of the output subdirectory under `outputs/md/`.
 - `trajectory_file`
-  Output trajectory filename.
+  Output trajectory filename for a single trajectory target.
 - `trajectory_format`
-  Trajectory format written during the run. Recommended values: `extxyz`, `traj`.
+  Trajectory format written during the run for a single trajectory target. Recommended values: `extxyz`, `traj`.
+- `trajectory_files`
+  YAML list of trajectory outputs written in parallel. Each entry must define `file` and `format`.
 - `final_structure_file`
-  Filename for the last saved structure.
+  Filename for the last saved structure for a single output target.
 - `final_structure_format`
-  Format for the final saved structure. Use `traj` when restart-ready velocities must be preserved reliably.
+  Format for the final saved structure for a single output target. Use `traj` when restart-ready velocities must be preserved reliably.
+- `final_structure_files`
+  YAML list of final-structure outputs written in parallel. Each entry must define `file` and `format`.
 - `save_final_structure`
   If `true`, write the last structure at the end of the run.
 - `log_file`
@@ -406,6 +416,35 @@ Indexing notes:
 
 - `index_base: 1` means human-style indexing, consistent with VASP or LAMMPS atom numbering.
 - `index_base: 0` means Python-style indexing.
+
+For both trajectories and final structures, the following two styles are supported:
+
+Single-output style:
+
+```yaml
+trajectory_file: trajectory.extxyz
+trajectory_format: extxyz
+final_structure_file: final_structure.traj
+final_structure_format: traj
+```
+
+Multi-output style:
+
+```yaml
+trajectory_files:
+  - file: trajectory.traj
+    format: traj
+  - file: trajectory.extxyz
+    format: extxyz
+
+final_structure_files:
+  - file: final_structure.traj
+    format: traj
+  - file: final_structure.extxyz
+    format: extxyz
+```
+
+If `trajectory_files` is provided, it takes precedence over `trajectory_file` and `trajectory_format`. The same rule applies to `final_structure_files` versus `final_structure_file` and `final_structure_format`.
 
 ### Early Stop Keywords
 
