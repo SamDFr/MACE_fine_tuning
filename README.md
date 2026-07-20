@@ -222,6 +222,11 @@ Key YAML options:
 - `create_stopcar_on_custom_condition`
 - `optimizer`
 - `fmax`
+- `fmax_consecutive`
+- `energy_tolerance_eV`
+- `maxstep_a`
+- `max_total_displacement_a`
+- `optimizer_options`
 - `steps`
 - `log_interval`
 
@@ -270,6 +275,7 @@ Key YAML options:
 - `tchain`
 - `tloop`
 - `friction`
+- `friction_fs_inv`
 - `taut_fs`
 - `initialize_velocities`
 - `remove_translation`
@@ -494,9 +500,20 @@ Keywords:
 ### Optimize-Specific Keywords
 
 - `optimizer`
-  ASE optimizer name. Supported values in the current script: `bfgs`, `lbfgs`, `fire`.
+  ASE optimizer. Supported values are `fire`, `fire2`, `bfgs`, `bfgs-linesearch`, `lbfgs`, `lbfgs-linesearch`, `mdmin`, `gpmin`, `precon-lbfgs`, and `precon-fire`.
+  `fire` is the robust default for structures far from a local minimum. `lbfgs` or `precon-lbfgs` are generally efficient for larger slabs. Line-search variants are more conservative but can require additional force evaluations. `gpmin` is intended for small systems.
 - `fmax`
   Force convergence threshold in `eV/A`.
+- `fmax_consecutive`
+  Number of consecutive optimizer steps for which the maximum unconstrained force must be at or below `fmax` before convergence is accepted. Default: `1`. A value such as `3` is recommended for production relaxations.
+- `energy_tolerance_eV`
+  Optional additional convergence check. When set, the absolute potential-energy change between consecutive optimization steps must be at or below this value, in addition to the force criterion.
+- `maxstep_a`
+  Maximum displacement of an atom during one optimizer step, in Angstrom, for optimizers that support `maxstep`.
+- `max_total_displacement_a`
+  Optional safety limit in Angstrom. The optimization stops cleanly if any atom moves farther than this distance from its initial position.
+- `optimizer_options`
+  YAML mapping forwarded to the selected ASE optimizer. Use it for algorithm-specific controls such as `memory`, `damping`, `use_line_search`, or `downhill_check`. Values here override generic optimizer settings when the same ASE keyword is used.
 - `steps`
   Maximum number of optimization steps.
 - `optimizer_log_file`
@@ -515,13 +532,15 @@ Keywords:
 - `steps`
   Number of MD integration steps.
 - `tdamp_fs`
-  Nose-Hoover damping time in femtoseconds.
+  Nose-Hoover damping time in femtoseconds. The implementation uses the number of unconstrained degrees of freedom, so VASP `Selective Dynamics` fixed atoms are excluded from the thermostat temperature target.
 - `tchain`
   Number of Nose-Hoover chain thermostats.
 - `tloop`
   Number of thermostat sub-iterations for Nose-Hoover.
 - `friction`
-  Langevin friction coefficient.
+  Legacy Langevin friction coefficient in inverse ASE time units. Prefer `friction_fs_inv`.
+- `friction_fs_inv`
+  Langevin friction coefficient in `fs^-1`. For example, `0.01` corresponds to a 100 fs damping time.
 - `taut_fs`
   Thermostat relaxation time used by Berendsen and Bussi.
 - `initialize_velocities`
@@ -532,6 +551,12 @@ Keywords:
   Remove overall rotation after velocity initialization.
 
 `nose-hoover` is the default thermostat.
+
+### Constraints and NVT Temperature
+
+VASP POSCAR/CONTCAR `Selective Dynamics` flags are read by ASE. Fully fixed atoms (`F F F`) become ASE `FixAtoms` constraints, and partially fixed coordinates become `FixScaled` constraints. Optimization and all MD integrators respect these constraints.
+
+The logged `temperature_K` uses only unconstrained degrees of freedom. The Nose-Hoover implementation in this repository also uses those same mobile degrees of freedom internally. Berendsen uses ASE's constraint-aware temperature calculation and is therefore consistent as well. For constrained systems, `bussi` is also a sound NVT choice because it explicitly uses ASE's constrained degree-of-freedom count.
 
 ### NVE-Specific Keywords
 

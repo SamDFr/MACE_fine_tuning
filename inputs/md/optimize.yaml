@@ -49,5 +49,19 @@ stop_on_custom_condition: false
 
 optimizer: fire
 fmax: 0.01
+# Require this many successive optimizer steps below fmax before declaring convergence.
+fmax_consecutive: 3
+# Optional: additionally require |E(n) - E(n-1)| <= this value in eV.
+# energy_tolerance_eV: 1.0e-5
+# Maximum displacement of one atom during a single optimizer step, in A.
+maxstep_a: 0.10
+# Optional safety stop if any atom moves farther than this from its initial position.
+# max_total_displacement_a: 2.0
+# Optimizer-specific ASE options. They override generic settings when duplicated.
+# optimizer_options:
+#   memory: 100       # LBFGS / PreconLBFGS
+#   damping: 1.0      # LBFGS / PreconLBFGS
+#   use_line_search: false
+#   downhill_check: true  # FIRE
 steps: 300
 log_interval: 10

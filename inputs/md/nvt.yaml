@@ -71,7 +71,9 @@ tchain: 3
 tloop: 1
 
 # langevin option
-friction: 0.02
+# Legacy ASE-unit friction. Prefer friction_fs_inv for unambiguous physical units.
+# friction: 0.02
+friction_fs_inv: 0.01
 
 # berendsen / bussi option
 taut_fs: 100.0

@@ -13,11 +13,21 @@ from ase import units
 from ase.io import read, write
 from ase.md.bussi import Bussi
 from ase.md.langevin import Langevin
-from ase.md.nose_hoover_chain import NoseHooverChainNVT
+from ase.md.nose_hoover_chain import NoseHooverChainNVT, NoseHooverChainThermostat
 from ase.md.nvtberendsen import NVTBerendsen
 from ase.md.verlet import VelocityVerlet
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary, ZeroRotation
-from ase.optimize import BFGS, FIRE
+from ase.optimize import (
+    BFGS,
+    BFGSLineSearch,
+    FIRE,
+    FIRE2,
+    GPMin,
+    LBFGS,
+    LBFGSLineSearch,
+    MDMin,
+)
+from ase.optimize.precon import PreconFIRE, PreconLBFGS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +71,34 @@ class PrematureStopRequested(RuntimeError):
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason
+
+
+class ConstraintAwareNoseHooverChainNVT(NoseHooverChainNVT):
+    """Nose-Hoover-chain NVT using only mobile degrees of freedom.
+
+    ASE's stock implementation uses 3 * N atoms in the thermostat mass and
+    temperature-driving term.  That is not correct when FixAtoms or
+    FixScaled constraints were read from a VASP Selective Dynamics POSCAR.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ndof = self.atoms.get_number_of_degrees_of_freedom()
+        if ndof <= 0:
+            raise ValueError("NVT requires at least one unconstrained degree of freedom.")
+
+        # NoseHooverChainThermostat expresses the number of degrees of freedom
+        # as 3 * num_atoms_global.  A fractional effective atom count is valid
+        # here and makes that quantity exactly equal to the mobile DOF count.
+        self._thermostat = NoseHooverChainThermostat(
+            num_atoms_global=ndof / 3.0,
+            masses=self.masses,
+            temperature_K=self._thermostat._kT / units.kB,
+            tdamp=self._thermostat._tdamp,
+            tchain=self._thermostat._tchain,
+            tloop=self._thermostat._tloop,
+        )
+        self.mobile_degrees_of_freedom = ndof
 
 
 def find_model_files() -> list[Path]:
@@ -704,13 +742,133 @@ def attach_stop_monitor(dynamics, atoms, output_dir: Path, config: dict) -> Path
 
 
 def build_optimizer(name: str, atoms, output_dir: Path, config: dict):
+    output_dir.mkdir(parents=True, exist_ok=True)
     logfile = output_dir / str(config.get("optimizer_log_file", "optimizer.log"))
     restart = output_dir / str(config.get("optimizer_restart_file", "optimizer.restart"))
-    if name.lower() == "fire":
-        return FIRE(atoms, logfile=str(logfile), restart=str(restart))
-    if name.lower() == "bfgs":
-        return BFGS(atoms, logfile=str(logfile), restart=str(restart))
-    raise ValueError("optimizer must be 'fire' or 'bfgs'")
+    options = config.get("optimizer_options", {})
+    if options is None:
+        options = {}
+    if not isinstance(options, dict):
+        raise ValueError("`optimizer_options` must be a YAML mapping.")
+
+    # A top-level maxstep is convenient for the common case.  Optimizer-specific
+    # settings stay available through optimizer_options.
+    if config.get("maxstep_a") is not None:
+        options = {"maxstep": float(config["maxstep_a"]), **options}
+
+    normalized_name = name.lower().replace("_", "-")
+    optimizer_classes = {
+        "fire": FIRE,
+        "fire2": FIRE2,
+        "bfgs": BFGS,
+        "bfgs-linesearch": BFGSLineSearch,
+        "bfgs-line-search": BFGSLineSearch,
+        "lbfgs": LBFGS,
+        "lbfgs-linesearch": LBFGSLineSearch,
+        "lbfgs-line-search": LBFGSLineSearch,
+        "mdmin": MDMin,
+        "gpmin": GPMin,
+        "precon-lbfgs": PreconLBFGS,
+        "precon-fire": PreconFIRE,
+    }
+    optimizer_class = optimizer_classes.get(normalized_name)
+    if optimizer_class is None:
+        supported = ", ".join(sorted(optimizer_classes))
+        raise ValueError(f"Unsupported optimizer {name!r}. Use one of: {supported}")
+
+    constructor_options = {"logfile": str(logfile), **options}
+    constructor_options["restart"] = str(restart)
+    return optimizer_class(atoms, **constructor_options)
+
+
+def _maximum_force_eV_A(atoms) -> float:
+    forces = atoms.get_forces()
+    return float(np.linalg.norm(forces, axis=1).max()) if len(forces) else 0.0
+
+
+def run_optimizer_with_consecutive_convergence(
+    optimizer,
+    atoms,
+    fmax: float,
+    steps: int,
+    consecutive: int = 1,
+    energy_tolerance_eV: float | None = None,
+    max_total_displacement_a: float | None = None,
+) -> dict:
+    """Run an ASE optimizer until its force criterion is stable.
+
+    The standard ASE Optimizer.run() stops at the first force evaluation below
+    fmax.  This implementation keeps taking optimizer steps until that
+    criterion is met for `consecutive` successive steps, optionally also
+    requiring a small change in potential energy.
+    """
+    if fmax <= 0:
+        raise ValueError("`fmax` must be > 0.")
+    if steps < 0:
+        raise ValueError("`steps` must be >= 0.")
+    if consecutive < 1:
+        raise ValueError("`fmax_consecutive` must be >= 1.")
+    if energy_tolerance_eV is not None and energy_tolerance_eV < 0:
+        raise ValueError("`energy_tolerance_eV` must be >= 0 when provided.")
+    if max_total_displacement_a is not None and max_total_displacement_a <= 0:
+        raise ValueError("`max_total_displacement_a` must be > 0 when provided.")
+
+    initial_positions = atoms.get_positions().copy()
+    previous_energy = None
+    stable_count = 0
+    converged = False
+    last_max_force = float("nan")
+
+    # Mirror ASE Dynamics.irun() so attached trajectory/log observers are
+    # called once for the initial structure and once after every optimizer step.
+    optimizer.max_steps = optimizer.nsteps + steps
+    gradient = optimizer.optimizable.get_gradient()
+    if optimizer.nsteps == 0:
+        optimizer.log(gradient)
+        optimizer.call_observers()
+
+    for iteration in range(steps + 1):
+        energy = float(atoms.get_potential_energy())
+        last_max_force = _maximum_force_eV_A(atoms)
+        energy_stable = (
+            energy_tolerance_eV is None
+            or previous_energy is not None
+            and abs(energy - previous_energy) <= energy_tolerance_eV
+        )
+        if last_max_force <= fmax and energy_stable:
+            stable_count += 1
+        else:
+            stable_count = 0
+
+        if stable_count >= consecutive:
+            converged = True
+            break
+
+        if iteration == steps:
+            break
+
+        optimizer.step()
+        optimizer.nsteps += 1
+        gradient = optimizer.optimizable.get_gradient()
+        optimizer.log(gradient)
+        optimizer.call_observers()
+
+        displacement = np.linalg.norm(atoms.get_positions() - initial_positions, axis=1).max()
+        if max_total_displacement_a is not None and displacement > max_total_displacement_a:
+            raise PrematureStopRequested(
+                "Optimizer safety limit exceeded: maximum total atom displacement "
+                f"{displacement:.6f} A > {max_total_displacement_a:.6f} A"
+            )
+        previous_energy = energy
+
+    return {
+        "converged": converged,
+        "fmax_eV_A": float(fmax),
+        "fmax_consecutive_required": int(consecutive),
+        "fmax_consecutive_reached": int(stable_count),
+        "final_max_force_eV_A": float(last_max_force),
+        "energy_tolerance_eV": energy_tolerance_eV,
+    }
 
 
 def initialize_velocities(
@@ -746,7 +904,7 @@ def setup_nvt(atoms, config: dict):
         tdamp_fs = float(config.get("tdamp_fs", 100.0))
         tchain = int(config.get("tchain", 3))
         tloop = int(config.get("tloop", 1))
-        return NoseHooverChainNVT(
+        return ConstraintAwareNoseHooverChainNVT(
             atoms,
             timestep=time_step_fs * units.fs,
             temperature_K=temperature_k,
@@ -756,7 +914,12 @@ def setup_nvt(atoms, config: dict):
         )
 
     if thermostat == "langevin":
-        friction = float(config.get("friction", 0.02))
+        # The legacy `friction` key is in ASE inverse-time units.  The new
+        # friction_fs_inv key uses the physically transparent fs^-1 unit.
+        if config.get("friction_fs_inv") is not None:
+            friction = float(config["friction_fs_inv"]) / units.fs
+        else:
+            friction = float(config.get("friction", 0.02))
         return Langevin(
             atoms,
             timestep=time_step_fs * units.fs,

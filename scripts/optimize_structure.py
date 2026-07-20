@@ -16,6 +16,7 @@ from _md_shared import (
     print_structure_header,
     print_timing_summary,
     prepare_named_output_dir,
+    run_optimizer_with_consecutive_convergence,
     save_final_structure,
     select_model_files,
     select_structure_files,
@@ -38,6 +39,13 @@ def main() -> None:
     optimizer = config.get("optimizer", "fire")
     fmax = float(config.get("fmax", 0.03))
     steps = int(config.get("steps", 300))
+    fmax_consecutive = int(config.get("fmax_consecutive", 1))
+    energy_tolerance_eV = config.get("energy_tolerance_eV")
+    if energy_tolerance_eV is not None:
+        energy_tolerance_eV = float(energy_tolerance_eV)
+    max_total_displacement_a = config.get("max_total_displacement_a")
+    if max_total_displacement_a is not None:
+        max_total_displacement_a = float(max_total_displacement_a)
 
     for structure_index, structure_path in enumerate(structure_paths, start=1):
         print_structure_header("optimize", structure_path, structure_index, len(structure_paths))
@@ -50,8 +58,23 @@ def main() -> None:
             dyn = build_optimizer(optimizer, atoms, output_dir, config=config)
             attach_trajectory_and_log(dyn, atoms, output_dir, config=config)
             stopcar_path = attach_stop_monitor(dyn, atoms, output_dir, config=config)
+            optimization_result = {}
+
+            def run_optimization() -> None:
+                optimization_result.update(
+                    run_optimizer_with_consecutive_convergence(
+                        dyn,
+                        atoms,
+                        fmax=fmax,
+                        steps=steps,
+                        consecutive=fmax_consecutive,
+                        energy_tolerance_eV=energy_tolerance_eV,
+                        max_total_displacement_a=max_total_displacement_a,
+                    )
+                )
+
             elapsed_seconds, started_at, finished_at, stopped_early, stop_reason = measure_run(
-                lambda: dyn.run(fmax=fmax, steps=steps)
+                run_optimization
             )
             save_final_structure(atoms, output_dir, config=config)
             completed_steps = int(getattr(dyn, "nsteps", steps))
@@ -66,6 +89,7 @@ def main() -> None:
                 stopped_early=stopped_early,
                 stop_reason=stop_reason,
             )
+            timing_summary["optimization"] = optimization_result
             write_timing_summary(output_dir, config, timing_summary)
             write_run_settings(
                 output_dir,
@@ -80,6 +104,17 @@ def main() -> None:
             print(f"Completed calculation for model: {model_path.name}")
             print(f"Outputs written to: {output_dir}")
             print(f"STOPCAR path: {stopcar_path}")
+            if optimization_result:
+                print(f"Optimization converged: {optimization_result['converged']}")
+                print(
+                    "Final maximum unconstrained force: "
+                    f"{optimization_result['final_max_force_eV_A']:.6f} eV/A"
+                )
+                print(
+                    "Consecutive force checks: "
+                    f"{optimization_result['fmax_consecutive_reached']}/"
+                    f"{optimization_result['fmax_consecutive_required']}"
+                )
             print_timing_summary(timing_summary)
 
 
